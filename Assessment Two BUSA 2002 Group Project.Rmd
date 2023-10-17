@@ -1,0 +1,235 @@
+---
+title: "Assessment Two BUSA 2002 Group 9 - Clinical Result Callback Dashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(lubridate)
+library(xts)
+library(dygraphs)
+library(plotly)
+library(highcharter)
+library(DT)
+```
+
+```{r data, include= FALSE}
+data= read_csv("july_critical_callback_data.csv") %>%
+  mutate(call_hour= hour(last_phone_datetime),
+         call_wday= wday(last_phone_datetime, label= TRUE),
+         call_date= day(last_phone_datetime),
+         call_week= isoweek(last_phone_datetime),
+         call_month= month(last_phone_datetime),
+         call_year= year(last_phone_datetime),
+         test_code= replace_na(test_code, "NA"))
+
+```
+
+Overall {data-icon="fa-phone-volume"}
+===
+Row
+-----------------------------------------------------------------------
+
+### Average Callback Time
+
+```{r}
+mean_tat= round(mean(data$call_tat), 0)
+valueBox(value= mean_tat, icon= "fa-stopwatch", caption= "Average Callback Time", color= "lightblue")
+
+```
+
+### Total Calls
+
+```{r}
+total_calls= data %>% nrow()
+valueBox(value= total_calls, icon= "fa-hashtag", caption= "Total Calls", color= "violet")
+
+```
+
+### Percent On Time
+
+```{r}
+num_ontime= data %>% filter(call_tat <= 30) %>% nrow()
+num_late= data %>% filter(call_tat > 30) %>% nrow()
+perc_ontime= round((num_ontime/total_calls)*100, 0)
+
+if(perc_ontime >= 95){
+  valueBox(value= perc_ontime, icon= "fa-percent", caption= "Percent on Time", color= "lightgreen")
+} else{
+  valueBox(value= perc_ontime, icon= "fa-percent", caption= "Percent on Time", color= "red")
+}
+
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Weekly Overview of Hourly Call Breakdown for `r date(min(data$last_phone_datetime))` to `r date(max(data$last_phone_datetime))`
+
+```{r}
+p1= ggplot(filter(data, call_wday %in% c("Mon", "Tue", "Wed", "Thu", "Fri"))) +
+  geom_bar(aes(x= call_hour, fill= tech_location)) +
+  facet_grid(call_wday~call_week) +
+  labs(x= "Hour", y= "Count", fill= "Type") +
+  scale_fill_manual(values= c("lightskyblue", "slategrey")) +
+  theme_bw() +
+  theme(legend.position = "top")
+
+p1
+```
+
+### Daily Call Volumes `r date(min(data$last_phone_datetime))` to `r date(max(data$last_phone_datetime))`
+
+```{r}
+daily_vol= data %>%
+  group_by(call_year, call_month, call_date) %>%
+  summarise(n = n()) %>%
+  ungroup() %>%
+  unite(dttm, call_year, call_month, call_date, sep = "-", remove= TRUE) %>%
+  mutate(dttm= as.Date(dttm))
+
+daily_vol_ts= xts(daily_vol$n, order.by= daily_vol$dttm)
+
+p2= dygraph(daily_vol_ts, xlab= "Date", ylab= "Call Volume") %>%
+  dyOptions(colors= "pink", strokeWidth = 2)
+  
+p2
+  
+```
+
+Call Centre {data-icon="fa-users"}
+===
+
+Row
+-----------------------------------------------------------------------
+
+### Average Callback Time
+
+```{r}
+cc_calls= data %>% filter(tech_location == "CallCenter")
+mean_tat_cc= round(mean(cc_calls$call_tat), 0)
+valueBox(value= mean_tat_cc, icon= "fa-stopwatch", caption= "Average Callback Time", color= "lightblue")
+```
+
+### Total Calls
+
+```{r}
+total_cc_calls= data %>% filter(tech_location == "CallCenter") %>% nrow()
+valueBox(value= total_cc_calls, icon= "fa-hashtag", caption= "Total Calls", color= "violet")
+
+```
+
+### Percent On Time
+
+```{r}
+
+cc_num_ontime= data %>% filter(tech_location =="CallCenter", call_tat <= 30) %>% nrow()
+cc_num_late= data %>% filter(tech_location == "CallCenter",call_tat > 30) %>% nrow()
+cc_perc_ontime= round((cc_num_ontime/total_cc_calls)*100, 0)
+
+if(cc_perc_ontime >= 95){
+  valueBox(value= cc_perc_ontime, icon= "fa-percent", caption= "Percent on Time", color= "lightgreen")
+} else{
+  valueBox(value= cc_perc_ontime, icon= "fa-percent", caption= "Percent on Time", color= "red")
+}
+
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Overdue Call Details for `r date(min(data$last_phone_datetime))` to `r date(max(data$last_phone_datetime))`
+
+```{r}
+cc_late= data %>% filter(tech_location == "CallCenter", call_tat > 30) %>%
+  select(call_tat, accession, pt_type, pt_loc_code, test_code, result_datetime, phoned_title, tech)
+
+datatable(cc_late, options= list(pageLength=20, autoWidth= TRUE))
+
+```
+
+### Tech Summary of Overdue Call Details for `r date(min(data$last_phone_datetime))` to `r date(max(data$last_phone_datetime))`
+
+```{r}
+p3= hcboxplot(
+  outliers= FALSE, x= cc_calls$call_tat, var= cc_calls$tech, name= "TAT", color= "red", lineWidth= 2) %>%
+  hc_title(text= "") %>%
+  hc_xAxis(title= list(text= "Tech Code")) %>%
+  hc_yAxis(title= list(text= "Call Time (minutes)")) %>%
+  hc_chart(type= "column")
+
+p3
+
+```
+
+Non Call Centre {data-icon="fa-users-slash"}
+===
+
+Row
+-----------------------------------------------------------------------
+
+### Average Callback Time
+
+```{r}
+ncc_calls= data %>% filter(tech_location == "Non-CC")
+mean_tat_ncc= round(mean(ncc_calls$call_tat), 0)
+valueBox(value= mean_tat_ncc, icon= "fa-stopwatch", caption= "Average Callback Time", color= "lightblue")
+```
+
+
+### Total Calls
+
+```{r}
+total_ncc_calls= data %>% filter(tech_location == "Non-CC") %>% nrow()
+valueBox(value= total_ncc_calls, icon= "fa-hashtag", caption= "Total Calls", color= "violet")
+
+```
+
+### Percent On Time
+
+```{r}
+
+ncc_num_ontime= data %>% filter(tech_location =="Non-CC", call_tat <= 30) %>% nrow()
+ncc_num_late= data %>% filter(tech_location == "Non-CC",call_tat > 30) %>% nrow()
+ncc_perc_ontime= round((ncc_num_ontime/total_ncc_calls)*100, 0)
+
+if(ncc_perc_ontime >= 95){
+  valueBox(value= ncc_perc_ontime, icon= "fa-percent", caption= "Percent on Time", color= "lightgreen")
+} else{
+  valueBox(value= ncc_perc_ontime, icon= "fa-percent", caption= "Percent on Time", color= "red")
+}
+
+```
+
+
+Row
+-----------------------------------------------------------------------
+
+### Overdue Call Details for `r date(min(data$last_phone_datetime))` to `r date(max(data$last_phone_datetime))`
+
+```{r}
+ncc_late= data %>% filter(tech_location == "Non-CC", call_tat > 30) %>%
+  select(call_tat, accession, pt_type, pt_loc_code, test_code, result_datetime, phoned_title, tech)
+
+datatable(ncc_late, options= list(pageLength=20, autoWidth= TRUE))
+
+```
+
+
+### Tech Summary of Overdue Call Details for `r date(min(data$last_phone_datetime))` to `r date(max(data$last_phone_datetime))`
+
+```{r}
+p3= hcboxplot(
+  outliers= FALSE, x= ncc_calls$call_tat, var= ncc_calls$tech, name= "TAT", color= "red", lineWidth= 2) %>%
+  hc_title(text= "") %>%
+  hc_xAxis(title= list(text= "Tech Code")) %>%
+  hc_yAxis(title= list(text= "Call Time (minutes)")) %>%
+  hc_chart(type= "column")
+
+p3
+
+```
